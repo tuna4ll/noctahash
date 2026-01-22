@@ -1,0 +1,18 @@
+[package]
+name = "noctahash"
+version = "0.1.0"
+edition = "2021"
+authors = ["Tuna4L"]
+description = "Memory-hard password hashing algorithm designed to resist GPU, ASIC, and side-channel attacks"
+license = "MIT"
+repository = "https://github.com/Tuna4LL/noctahash"
+keywords = ["password", "hashing", "crypto", "memory-hard", "security"]
+categories = ["cryptography", "authentication"]
+readme = "README.md"
+
+[dependencies]
+base64 = "0.21"
+hex = "0.4"
+rand = "0.8"
+constant_time_eq = "0.4"
+zeroize = { version = "1.7", features = ["zeroize_derive"] }

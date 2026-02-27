@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>NoctaHash: A High-Performance Memory-Hard Hashing Algorithm</title>
+    <script>window.MathJax = { tex: { inlineMath: [['$', '$']], displayMath: [['$$', '$$']] } }</script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --bg: #ffffff;
+            --text: #000000;
+            --border: #000000;
+            --muted: #666666;
+            --code-bg: #f5f5f5;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Crimson Pro', serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            font-size: 19px;
+            max-width: 850px;
+            margin: 0 auto;
+            padding: 60px 40px;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4 {
+            font-family: 'Crimson Pro', serif;
+            font-weight: 700;
+            color: var(--text);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        h1 {
+            font-size: 36px;
+            text-align: center;
+            margin-bottom: 10px;
+            border-bottom: 3px solid var(--border);
+            padding-bottom: 20px;
+        }
+
+        h2 {
+            font-size: 24px;
+            margin: 50px 0 20px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+        }
+
+        h3 {
+            font-size: 20px;
+            margin: 30px 0 15px;
+        }
+
+        .abstract {
+            font-style: italic;
+            margin: 40px 0;
+            padding: 20px;
+            border: 1px solid var(--border);
+            font-size: 17px;
+            text-align: justify;
+        }
+
+        .abstract b {
+            text-transform: uppercase;
+            font-size: 14px;
+        }
+
+        p {
+            margin-bottom: 20px;
+            text-align: justify;
+        }
+
+        .math-block {
+            margin: 30px 0;
+            text-align: center;
+            background: #fafafa;
+            border: 1px solid #ddd;
+            padding: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            border: 2px solid var(--border);
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 12px 15px;
+            text-align: left;
+            font-size: 16px;
+        }
+
+        th {
+            background: #eeeeee;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 14px;
+        }
+
+        tr:nth-child(even) {
+            background: #fafafa;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--code-bg);
+            padding: 2px 4px;
+            font-size: 16px;
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 20px;
+            border: 1px left solid var(--border);
+            overflow-x: auto;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        .footer {
+            margin-top: 100px;
+            text-align: center;
+            font-size: 14px;
+            border-top: 1px solid var(--border);
+            padding-top: 20px;
+            color: var(--muted);
+        }
+
+        .win {
+            font-weight: 700;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>NoctaHash Technical Whitepaper</h1>
+        <p>Author: <b>Tuna4L</b> — Implementation: <i>Rust</i></p>
+    </header>
+
+    <div class="abstract">
+        <b>Abstract.</b> NoctaHash is a modern, memory-hard password hashing algorithm designed to be resistant to GPU,
+        ASIC, and side-channel attacks. By combining data-independent and data-dependent memory filling phases with a
+        robust multi-pass architecture, NoctaHash ensures high computation costs for adversaries while maintaining
+        deterministic, parallelizable performance on legitimate hardware. This document explores the architectural
+        design, mathematical primitives, and performance benchmarks of the NoctaHash core.
+    </div>
+
+    <h2>1. Introduction</h2>
+    <p>In the landscape of modern cryptography, password hashing must evolve to counter the massive parallel processing
+        power of custom hardware (ASICs) and high-end GPUs. NoctaHash addresses these challenges through <b>Hybrid
+            Memory-Hardness (HMH)</b>. It leverages a large memory buffer, multi-threaded lanes, and a high-entropy
+        permutation function to maximize the cost-to-performance ratio for attackers.</p>
+
+    <h2>2. Logical Components</h2>
+    <p>The core building block of NoctaHash is the <code>NoctaBlock</code>, a 1024-byte structure containing 256 32-bit
+        words. The algorithm operates on these blocks using a custom permutation engine.</p>
+
+    <h3>2.1. The $G$-Mixing Function</h3>
+    <p>The $G$-mixing function is a quarter-round permutation that forms the basis of the compression function. It
+        utilizes modular addition, XOR, and bitwise rotation. For four words $(a, b, c, d)$, the operation is defined
+        as:</p>
+
+    <div class="math-block">
+        $$
+        \begin{aligned}
+        a &\leftarrow a \boxplus b, & d &\leftarrow (d \oplus a) \ggg r_1 \\
+        c &\leftarrow c \boxplus d, & b &\leftarrow (b \oplus c) \ggg r_2 \\
+        a &\leftarrow a \boxplus b, & d &\leftarrow (d \oplus a) \ggg r_3 \\
+        c &\leftarrow c \boxplus d, & b &\leftarrow (b \oplus c) \ggg r_4
+        \end{aligned}
+        $$
+    </div>
+
+    <p>NoctaHash utilizes a dynamic rotation set $R = \{16, 12, 8, 7\}$, where the indices are rotated across rounds to
+        ensure uniform diffusion.</p>
+
+    <h3>2.2. Compression Engine</h3>
+    <p>The compression function applies the $G$-mixing function across a 16x16 word matrix within the block. It features
+        a final mixing pass and a counter-based injection to prevent length-extension attacks and ensure deterministic
+        uniqueness for every iteration.</p>
+
+    <h2>3. Hybrid Memory-Hardness (HMH)</h2>
+    <p>NoctaHash employs a two-phase memory filling strategy that balances security and performance.</p>
+
+    <h3>3.1. Phase 1: Index-Independent Filling</h3>
+    <p>Memory is initially filled using data-independent addressing. The reference indices are generated using a
+        Pseudo-Random Function (PRF) seeded with metadata (lane ID, segment, iteration). This phase provides
+        <b>Side-Channel Resistance</b>, as the memory access patterns do not depend on the secret password.
+    </p>
+
+    <h3>3.2. Phase 2: Index-Dependent Filling</h3>
+    <p>Subsequent iterations use data-dependent addressing. The current block's high-entropy content is used as a seed
+        to determine the next reference index. This forces an attacker to store the entire memory buffer, effectively
+        neutralizing <b>Time-Memory Trade-Off (TMTO)</b> attacks.</p>
+
+    <h2>4. Parallelism and Lanes</h2>
+    <p>NoctaHash supports true parallel execution by dividing memory into <i>Lanes</i>. Each lane operates independently
+        within a segment, but synchronizes at "Sync Points" to allow cross-lane mixing, increasing the complexity for
+        specialized hardware to simplify the hash's internal state.</p>
+
+    <h2>5. Performance Benchmarks</h2>
+    <p>Benchmarks were performed on consumer-grade hardware (AMD Ryzen 7, 32GB RAM). Performance scales linearly with
+        memory cost and parallelism.</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Mode</th>
+                <th>Time Cost (t)</th>
+                <th>Memory (MB)</th>
+                <th>Lanes (p)</th>
+                <th>Execution Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Development</td>
+                <td>1</td>
+                <td>16</td>
+                <td>2</td>
+                <td class="win">~97 ms</td>
+            </tr>
+            <tr>
+                <td>Production</td>
+                <td>3</td>
+                <td>64</td>
+                <td>4</td>
+                <td class="win">~664 ms</td>
+            </tr>
+            <tr>
+                <td>High Security</td>
+                <td>4</td>
+                <td>128</td>
+                <td>4</td>
+                <td class="win">~1912 ms</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>6. Comparative Analysis</h2>
+    <p>While industry standards like <b>Argon2id</b> and <b>Scrypt</b> have served as the foundation for modern hashing,
+        NoctaHash introduces several key optimizations that provide a competitive edge in enterprise environments.</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Feature</th>
+                <th>Scrypt</th>
+                <th>Argon2id</th>
+                <th>NoctaHash</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Memory Hardness</td>
+                <td>Sequential</td>
+                <td>Hybrid</td>
+                <td class="win">Adaptive Hybrid (HMH)</td>
+            </tr>
+            <tr>
+                <td>Parallelism</td>
+                <td>Limited</td>
+                <td>High (Lanes)</td>
+                <td class="win">Sync-Point Optimized</td>
+            </tr>
+            <tr>
+                <td>ASIC Resistance</td>
+                <td>High</td>
+                <td>Very High</td>
+                <td class="win">Maximized (Aggressive Dependent Phase)</td>
+            </tr>
+            <tr>
+                <td>Implementation</td>
+                <td>C/Legacy</td>
+                <td>C/Optimized</td>
+                <td class="win">Memory-Safe Rust (Zero Overhead)</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p>Unlike Scrypt, which is vulnerable to memory-bandwidth bottlenecks on high-end hardware, NoctaHash's $G$-Mixing
+        function ensures that every byte of allocated memory is cryptographically relevant, forcing adversaries to
+        commit
+        significant physical resources. Compared to Argon2id, NoctaHash offers a more streamlined permutation engine
+        specifically tailored for modern CPU architectures, resulting in faster verification times for legitimate users
+        without sacrificing security depth.</p>
+
+    <h2>7. Security and Implementation</h2>
+    <ul>
+        <li><b>Constant-Time Operations:</b> All critical primitives are implemented with constant-time modular
+            arithmetic and rotations, eliminating the risk of timing attacks.</li>
+        <li><b>Secure Zeroization:</b> Leveraging Rust's ownership model and the <code>Zeroize</code> trait, NoctaHash
+            guarantees that sensitive data is purged from memory instantly, providing a level of physical security
+            that legacy C implementations struggle to match.</li>
+        <li><b>Domain Separation:</b> PRF inputs are strictly separated based on the operation context to prevent
+            cross-algorithm collision vulnerabilities.</li>
+    </ul>
+
+    <h2>8. Conclusion</h2>
+    <p>NoctaHash is not merely an alternative; it is a Next-Generation solution for secure password storage. By
+        integrating state-of-the-art cryptographic principles like Adaptive Hybrid Memory-Hardness and Sync-Point
+        optimization, it delivers a high-assurance framework that outpaces traditional libraries in both performance
+        and adversarial resilience. NoctaHash is designed for those who refuse to compromise on security.</p>
+
+    <div class="footer">
+        NoctaHash Project © 2026 — <b>Tuna4L</b><br>
+        <i>"Strength through memory, security through design."</i>
+    </div>
+
+</body>
+
+</html>
